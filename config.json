@@ -1,7 +1,6 @@
 {
-    "name": "ImageNet_LT_ResNeXt50_TADE",
-    "n_gpu": 2,
-
+    "name": "Food_LT_ResNeXt50_TADE",
+    "n_gpu": 1,
     "arch": {
         "type": "ResNeXt50Model",
         "args": {
@@ -13,18 +12,18 @@
         }
     },
     "data_loader": {
-        "type": "ImageNetLTDataLoader",
-        "args":{
-            "data_dir": "./data/imagenet",
-            "batch_size": 64,
+        "type": "FoodLTDataLoader",
+        "args": {
+            "data_dir": "../final-project-challenge-3-tami/food_data",
+            "batch_size": 80,
             "shuffle": true,
-            "num_workers": 12
+            "num_workers": 0
         }
     },
     "optimizer": {
         "type": "SGD",
-        "args":{
-            "lr": 0.025,
+        "args": {
+            "lr": 0.08,
             "weight_decay": 5e-4,
             "momentum": 0.9,
             "nesterov": true
@@ -33,8 +32,8 @@
     "add_extra_info": true,
     "loss": {
         "type": "DiverseExpertLoss",
-        "args":{
-             "tau": 2
+        "args": {
+            "tau": 2
         }
     },
     "metrics": [
@@ -43,13 +42,13 @@
     "lr_scheduler": {
         "type": "CosineAnnealingLR",
         "args": {
-            "T_max": 100,
+            "T_max": 180,
             "eta_min": 0
         }
     },
     "trainer": {
         "epochs": 180,
-        "save_dir": "saved/imagenet/tade_e180_inv2_bs64_lr0.025",
+        "save_dir": "saved/food",
         "save_period": 180,
         "verbosity": 2,
         "monitor": "max val_accuracy",
