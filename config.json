@@ -15,7 +15,7 @@
         "type": "FoodLTDataLoader",
         "args": {
             "data_dir": "../final-project-challenge-3-tami/food_data",
-            "batch_size": 80,
+            "batch_size": 64,
             "shuffle": true,
             "num_workers": 0
         }
@@ -23,7 +23,7 @@
     "optimizer": {
         "type": "SGD",
         "args": {
-            "lr": 0.08,
+            "lr": 0.025,
             "weight_decay": 5e-4,
             "momentum": 0.9,
             "nesterov": true
