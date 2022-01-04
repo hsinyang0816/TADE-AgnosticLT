@@ -1,0 +1,37 @@
+{
+    "name": "Food_LT_ResNeXt50_TADE_test_time_training",
+    "n_gpu": 1,
+    "arch": {
+        "type": "ResNeXt50Model",
+        "args": {
+            "num_classes": 1000,
+            "reduce_dimension": true,
+            "use_norm": true,
+            "returns_feat": true,
+            "num_experts": 3
+        }
+    },
+    "data_loader": {
+        "type": "ImageNetLTDataLoader",
+        "args": {
+            "data_dir": "../final-project-challenge-3-tami/food_data",
+            "batch_size": 64,
+            "shuffle": true,
+            "num_workers": 0
+        }
+    },
+    "optimizer": {
+        "type": "SGD",
+        "args": {
+            "lr": 0.025,
+            "weight_decay": 5e-4,
+            "momentum": 0.9,
+            "nesterov": true
+        }
+    },
+    "add_extra_info": true,
+    "metrics": [
+        "accuracy"
+    ],
+    "epochs": 3
+}
