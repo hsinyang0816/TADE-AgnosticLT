@@ -22,7 +22,7 @@ from PIL import Image
 from PIL import ImageFilter
 import glob
 import pandas as pd
-from utils import load_state_dict
+from utils import load_state_dict, rename_parallel_state_dict
 
 
 class AverageMeter(object):
@@ -113,6 +113,7 @@ class test_Dataset(Dataset):
     def __init__(self, root, transform):
         self.transform = transform
         self.fnames = glob.glob(os.path.join(root, '*'))
+        self.fnames.sort()
         self.num_samples = len(self.fnames)
 
     def __getitem__(self, idx):
@@ -148,20 +149,10 @@ class FoodLTDataLoader(DataLoader):
             transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
         ])
 
-        # if training:
-        #     # dataset = LT_Dataset(data_dir,  train_txt, train_trsfm)
-        #     # val_dataset = LT_Dataset(data_dir, val_txt, test_trsfm)
-        #     dataset = datasets.DatasetFolder(os.path.join(data_dir, 'train'), loader=lambda x: Image.open(
-        #         x), extensions="jpg", transform=train_trsfm)
-        #     val_dataset = datasets.DatasetFolder(
-        #         os.path.join(data_dir, 'val'), loader=lambda x: Image.open(x), extensions="jpg", transform=test_trsfm)
-        # else:  # test
-        #     # dataset = LT_Dataset(data_dir, test_txt, test_trsfm)
-        #     dataset = test_Dataset(data_dir, test_trsfm)
-        #     val_dataset = None
-
         if training:
             dataset = datasets.DatasetFolder(os.path.join(data_dir, 'train'), loader=lambda x: Image.open(
+                x), extensions="jpg", transform=train_trsfm)
+            train_dataset = datasets.DatasetFolder(os.path.join(data_dir, 'train'), loader=lambda x: Image.open(
                 x), extensions="jpg", transform=train_trsfm)
             val_dataset = datasets.DatasetFolder(
                 os.path.join(data_dir, 'val'), loader=lambda x: Image.open(x), extensions="jpg", transform=test_trsfm)
@@ -178,31 +169,13 @@ class FoodLTDataLoader(DataLoader):
         self.val_dataset = val_dataset
 
         self.n_samples = len(self.dataset)
-
-        # num_classes = len(np.unique(dataset.targets))
-        # assert num_classes == 1000
-
-        # cls_num_list = [0] * num_classes
-        # for label in dataset.targets:
-        #     cls_num_list[label] += 1
-
-        # self.cls_num_list = cls_num_list
+        self.val = datasets.DatasetFolder(
+            os.path.join('../final-project-challenge-3-tami/food_data/val'), loader=lambda x: Image.open(x), extensions="jpg", transform=test_trsfm)
+        self.mapping = self.val.class_to_idx
         print(
             "Test set will not be evaluated with balanced sampler, nothing is done to make it balanced")
-        # if balanced:
-        #     if training:
-        #         buckets = [[] for _ in range(num_classes)]
-        #         for idx, label in enumerate(dataset.targets):
-        #             buckets[label].append(idx)
-        #         sampler = BalancedSampler(buckets, retain_epoch_size)
-        #         shuffle = False
-        #     else:
-        #         print(
-        #             "Test set will not be evaluated with balanced sampler, nothing is done to make it balanced")
-        # else:
-        #     sampler = None
 
-        self.shuffle = shuffle
+        self.shuffle = False
         self.init_kwargs = {
             'batch_size': batch_size,
             'shuffle': self.shuffle,
@@ -213,10 +186,10 @@ class FoodLTDataLoader(DataLoader):
         super().__init__(dataset=self.dataset, **self.init_kwargs)
 
     def train_set(self):
-        return DataLoader(dataset=self.train_dataset, shuffle=True)
+        return DataLoader(dataset=self.train_dataset, **self.init_kwargs)
 
     def test_set(self):
-        return DataLoader(dataset=self.val_dataset, shuffle=False)
+        return DataLoader(dataset=self.val_dataset, **self.init_kwargs), self.mapping
 
 
 def mic_acc_cal(preds, labels):
@@ -230,6 +203,23 @@ def mic_acc_cal(preds, labels):
     return acc_mic_top1
 
 
+def resume_checkpoint(resume_path, model, state_dict_only=True):
+    """
+    Resume from saved checkpoints
+
+    :param resume_path: Checkpoint path to be resumed
+    """
+    resume_path = str(resume_path)
+    checkpoint = torch.load(resume_path)
+
+    state_dict = checkpoint['state_dict']
+    if state_dict_only:
+        rename_parallel_state_dict(state_dict)
+
+    # self.model.load_state_dict(state_dict)
+    load_state_dict(model, state_dict)
+
+
 def main(config):
     logger = config.get_logger('test')
 
@@ -239,10 +229,13 @@ def main(config):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     logger.info('Loading checkpoint: {} ...'.format(config.resume))
     checkpoint = torch.load(config.resume)
+    print(config.resume)
     state_dict = checkpoint['state_dict']
-    if config['n_gpu'] > 1:
-        model = torch.nn.DataParallel(model)
-    load_state_dict(model, state_dict)
+    # if config['n_gpu'] > 1:
+    #     model = torch.nn.DataParallel(model)
+    # load_state_dict(model, state_dict)
+    rename_parallel_state_dict(state_dict)
+    model.load_state_dict(state_dict)
     # model.load_state_dict([name.split('module.')[-1]
     #                       for name in state_dict.items()])
 
@@ -250,56 +243,55 @@ def main(config):
     model = model.to(device)
     weight_record_list = []
     data_loader = FoodLTDataLoader(
-        config['data_loader']['args']['data_dir'],
+        '../final-project-challenge-3-tami/food_data',
         batch_size=128,
         shuffle=False,
         training=False,
         num_workers=0,
     )
-    valid_data_loader = data_loader.test_set()
-    num_classes = config._config["arch"]["args"]["num_classes"]
+    valid_data_loader, mapping = data_loader.test_set()
+    # num_classes = config._config["arch"]["args"]["num_classes"]
     aggregation_weight = torch.nn.Parameter(
-        torch.FloatTensor(3), requires_grad=True)
+        torch.FloatTensor(3), requires_grad=False)
     aggregation_weight.data.fill_(1/3)
-
-    aggregation_weight = torch.load('aggregation_weight.pth')
-    # aggregation_weight.load_state_dict(checkpoint)
+    mapping = {v: k for k, v in mapping.items()}
+    checkpoint = torch.load('aggregation_weight.pth')
+    aggregation_weight = checkpoint['weight']
+    # aggregation_weight = torch.FloatTensor([0.6, 0.25, 0.15])
     print("Aggregation weight: Expert 1 is {0:.2f}, Expert 2 is {1:.2f}, Expert 3 is {2:.2f}".format(
         aggregation_weight[0], aggregation_weight[1], aggregation_weight[2]))
     test_validation(valid_data_loader, model,
-                    num_classes, aggregation_weight, device)
+                    aggregation_weight, device, mapping)
 
 
-def test_validation(data_loader, model, num_classes, aggregation_weight, device):
+def test_validation(data_loader, model, aggregation_weight, device, mapping):
     model.eval()
-    aggregation_weight.requires_grad = False
+    # aggregation_weight.requires_grad = False
     IDs = []
-    total_logits = torch.empty((0, num_classes)).cuda()
+    prediction_results = []
+
+    # total_logits = torch.empty((0, 1000)).cuda()
+    # total_labels = []
+    # acc = (prediction_results == total_labels).mean()
     with torch.no_grad():
         for i, (data, _, id) in enumerate(tqdm(data_loader)):
+            # print(data.shape)
             data = data.to(device)
             output = model(data)
             expert1_logits_output = output['logits'][:, 0, :]
             expert2_logits_output = output['logits'][:, 1, :]
             expert3_logits_output = output['logits'][:, 2, :]
-            aggregation_softmax = torch.nn.functional.softmax(
-                aggregation_weight)  # softmax for normalization
-            aggregation_output = aggregation_softmax[0] * expert1_logits_output + aggregation_softmax[1] * \
+            aggregation_output = aggregation_weight[0] * expert1_logits_output + aggregation_weight[1] * \
                 expert2_logits_output + \
-                aggregation_softmax[2] * expert3_logits_output
-            # for t, p in zip(target.view(-1), aggregation_output.argmax(dim=1).view(-1)):
-            #     confusion_matrix[t.long(), p.long()] += 1
-            total_logits = torch.cat((total_logits, aggregation_output))
-            # total_labels = torch.cat((total_labels, target))
+                aggregation_weight[2] * expert3_logits_output
+            prediction_results.extend(
+                aggregation_output.argmax(axis=1).cpu().numpy().tolist())
             IDs.extend(id)
-
-    probs, preds = F.softmax(total_logits.detach(), dim=1).max(dim=1)
-    print(len(preds))
     head_df = ['image_id', 'label']
     df = pd.DataFrame(columns=head_df)
-    for i in range(len(preds)):
-        df.loc[i] = [IDs[i]] + [preds[i]]
-    df.to_csv('pred_main.csv', index=False)
+    for i in range(len(prediction_results)):
+        df.loc[i] = [IDs[i]] + [int(mapping[prediction_results[i]])]
+    df.to_csv('main_pred.csv', index=False)
     print('finish!')
 
 

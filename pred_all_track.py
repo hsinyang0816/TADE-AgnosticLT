@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 
 main_df = pd.read_csv(
-    '../final-project-challenge-3-tami/food_data/testcase/sample_submission_main_track.csv').set_index("image_id")
+    'main_pred.csv').set_index("image_id")
 # preds = main_df['label']
 # IDs = main_df['image_id']
 head_df = ['image_id', 'label']

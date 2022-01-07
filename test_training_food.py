@@ -130,36 +130,6 @@ class GaussianBlur(object):
         return x
 
 
-# class LT_Dataset(Dataset):
-
-#     def __init__(self, root, txt, transform=None):
-#         self.img_path = []
-#         self.labels = []
-#         self.transform = transform
-#         with open(txt) as f:
-#             for line in f:
-#                 self.img_path.append(os.path.join(root, line.split()[0]))
-#                 self.labels.append(int(line.split()[1]))
-#         self.targets = self.labels  # Sampler needs to use targets
-
-#     def __len__(self):
-#         return len(self.labels)
-
-#     def __getitem__(self, index):
-
-#         path = self.img_path[index]
-#         label = self.labels[index]
-
-#         with open(path, 'rb') as f:
-#             sample = Image.open(f).convert('RGB')
-
-#         if self.transform is not None:
-#             sample = self.transform(sample)
-
-#         # return sample, label, path
-#         return sample, label
-
-
 class TwoCropsTransform:
     """Take two random crops of one image as the query and key."""
 
@@ -176,6 +146,7 @@ class test_Dataset(Dataset):
     def __init__(self, root, transform):
         self.transform = transform
         self.fnames = glob.glob(os.path.join(root, '*'))
+        self.fnames.sort()
         self.num_samples = len(self.fnames)
 
     def __getitem__(self, idx):
@@ -210,19 +181,6 @@ class FoodLTDataLoader(DataLoader):
             transforms.ToTensor(),
             transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
         ])
-
-        # if training:
-        #     # dataset = LT_Dataset(data_dir,  train_txt, train_trsfm)
-        #     # val_dataset = LT_Dataset(data_dir, val_txt, test_trsfm)
-        #     dataset = datasets.DatasetFolder(os.path.join(data_dir, 'train'), loader=lambda x: Image.open(
-        #         x), extensions="jpg", transform=train_trsfm)
-        #     val_dataset = datasets.DatasetFolder(
-        #         os.path.join(data_dir, 'val'), loader=lambda x: Image.open(x), extensions="jpg", transform=test_trsfm)
-        # else:  # test
-        #     # dataset = LT_Dataset(data_dir, test_txt, test_trsfm)
-        #     dataset = test_Dataset(data_dir, test_trsfm)
-        #     val_dataset = None
-
         if training:
             dataset = datasets.DatasetFolder(os.path.join(data_dir, 'train'), loader=lambda x: Image.open(
                 x), extensions="jpg", transform=train_trsfm)
@@ -242,33 +200,13 @@ class FoodLTDataLoader(DataLoader):
 
         self.n_samples = len(self.dataset)
 
-        # num_classes = len(np.unique(dataset.targets))
-        # assert num_classes == 1000
-
-        # cls_num_list = [0] * num_classes
-        # for label in dataset.targets:
-        #     cls_num_list[label] += 1
-
-        # self.cls_num_list = cls_num_list
         print(
             "Test set will not be evaluated with balanced sampler, nothing is done to make it balanced")
-        # if balanced:
-        #     if training:
-        #         buckets = [[] for _ in range(num_classes)]
-        #         for idx, label in enumerate(dataset.targets):
-        #             buckets[label].append(idx)
-        #         sampler = BalancedSampler(buckets, retain_epoch_size)
-        #         shuffle = False
-        #     else:
-        #         print(
-        #             "Test set will not be evaluated with balanced sampler, nothing is done to make it balanced")
-        # else:
-        #     sampler = None
 
         self.shuffle = shuffle
         self.init_kwargs = {
             'batch_size': batch_size,
-            'shuffle': self.shuffle,
+            # 'shuffle': self.shuffle,
             'num_workers': num_workers
         }
 
@@ -276,10 +214,10 @@ class FoodLTDataLoader(DataLoader):
         super().__init__(dataset=self.dataset, **self.init_kwargs)
 
     def train_set(self):
-        return DataLoader(dataset=self.train_dataset, shuffle=True)
+        return DataLoader(dataset=self.train_dataset, shuffle=True, **self.init_kwargs)
 
     def test_set(self):
-        return DataLoader(dataset=self.val_dataset, shuffle=False)
+        return DataLoader(dataset=self.val_dataset, shuffle=False, **self.init_kwargs)
 
 
 def mic_acc_cal(preds, labels):
@@ -306,29 +244,18 @@ def main(config):
     if config['n_gpu'] > 1:
         model = torch.nn.DataParallel(model)
     load_state_dict(model, state_dict)
-    # model.load_state_dict([name.split('module.')[-1]
-    #                       for name in state_dict.items()])
-
-    # prepare model for testing
     model = model.to(device)
     weight_record_list = []
-    performance_record_list = []
-    # test_distribution_set = ["forward50",  "forward25", "forward10", "forward5", "forward2",
-    #  "uniform",  "backward2", "backward5", "backward10", "backward25", "backward50"]
-
-    # for test_distribution in test_distribution_set:
-    # test_txt  = './data_txt/ImageNet_LT/ImageNet_LT_%s.txt'%(test_distribution)
-    # print(test_txt)
     data_loader = FoodLTDataLoader(
         config['data_loader']['args']['data_dir'],
-        batch_size=128,
+        batch_size=16,
         shuffle=False,
         training=False,
         num_workers=0,
     )
 
     train_data_loader = data_loader.train_set()
-    valid_data_loader = data_loader.test_set()
+    # valid_data_loader = data_loader.test_set()
     num_classes = config._config["arch"]["args"]["num_classes"]
     aggregation_weight = torch.nn.Parameter(
         torch.FloatTensor(3), requires_grad=True)
@@ -341,31 +268,13 @@ def main(config):
             train_data_loader, model, aggregation_weight, optimizer, num_classes, config, args)
         if weight_record[0] < 0.05 or weight_record[1] < 0.05 or weight_record[2] < 0.05:
             break
-    torch.save(aggregation_weight, 'aggregation_weight.pth')
+    torch.save({'weight': weight_record}, 'aggregation_weight.pth')
     print("Aggregation weight: Expert 1 is {0:.2f}, Expert 2 is {1:.2f}, Expert 3 is {2:.2f}".format(
         weight_record[0], weight_record[1], weight_record[2]))
     weight_record_list.append(weight_record)
-    test_validation(valid_data_loader, model,
-                    num_classes, aggregation_weight, device)
-    # performance_record_list.append(record)
-
-    # print('\n')
-    # print('='*25, ' Final results ', '='*25)
-    # print('\n')
-    # i = 0
-    # print('Top-1 accuracy on many-shot, medium-shot, few-shot and all classes:')
-    # for txt in performance_record_list:
-    #     # print(test_distribution_set[i]+'\t')
-    #     print(*txt)
-    #     i += 1
-
-    # i = 0
-    # print('\n')
     print('Aggregation weights of three experts:')
     for txt in weight_record_list:
-        # print(test_distribution_set[i]+'\t')
         print(*txt)
-        # i += 1
 
 
 def test_training(train_data_loader, model,  aggregation_weight, optimizer,   num_classes, config, args):
@@ -414,56 +323,6 @@ def test_training(train_data_loader, model,  aggregation_weight, optimizer,   nu
         aggregation_weight, dim=0).detach().cpu().numpy()
 
     return np.round(aggregation_softmax[0], decimals=2), np.round(aggregation_softmax[1], decimals=2), np.round(aggregation_softmax[2], decimals=2)
-
-
-def test_validation(data_loader, model, num_classes, aggregation_weight, device):
-    model.eval()
-    aggregation_weight.requires_grad = False
-    # b = np.load("./data/imagenet_lt_shot_list.npy")
-    # many_shot = b[0]
-    # medium_shot = b[1]
-    # few_shot = b[2]
-    IDs = []
-    confusion_matrix = torch.zeros(num_classes, num_classes).cuda()
-    total_logits = torch.empty((0, num_classes)).cuda()
-    total_labels = torch.empty(0, dtype=torch.long).cuda()
-    with torch.no_grad():
-        for i, (data, _, id) in enumerate(tqdm(data_loader)):
-            data = data.to(device)
-            output = model(data)
-            expert1_logits_output = output['logits'][:, 0, :]
-            expert2_logits_output = output['logits'][:, 1, :]
-            expert3_logits_output = output['logits'][:, 2, :]
-            aggregation_softmax = torch.nn.functional.softmax(
-                aggregation_weight)  # softmax for normalization
-            aggregation_output = aggregation_softmax[0] * expert1_logits_output + aggregation_softmax[1] * \
-                expert2_logits_output + \
-                aggregation_softmax[2] * expert3_logits_output
-            # for t, p in zip(target.view(-1), aggregation_output.argmax(dim=1).view(-1)):
-            #     confusion_matrix[t.long(), p.long()] += 1
-            total_logits = torch.cat((total_logits, aggregation_output))
-            # total_labels = torch.cat((total_labels, target))
-            IDs.extend(id)
-
-    probs, preds = F.softmax(total_logits.detach(), dim=1).max(dim=1)
-    print(len(preds))
-    head_df = ['image_id', 'label']
-    df = pd.DataFrame(columns=head_df)
-    for i in range(len(preds)):
-        df.loc[i] = [IDs[i]] + [preds[i]]
-    df.to_csv('pred_main.csv', index=False)
-    # Calculate the overall accuracy and F measurement
-    # eval_acc_mic_top1 = mic_acc_cal(preds[total_labels != -1],
-    #                                 total_labels[total_labels != -1])
-
-    # acc_per_class = confusion_matrix.diag()/confusion_matrix.sum(1)
-    # acc = acc_per_class.cpu().numpy()
-    # many_shot_acc = acc[many_shot].mean()
-    # medium_shot_acc = acc[medium_shot].mean()
-    # few_shot_acc = acc[few_shot].mean()
-    # print("Many-shot {0:.2f}, Medium-shot {1:.2f}, Few-shot {2:.2f}, All {3:.2f}".format(
-    #     many_shot_acc * 100, medium_shot_acc * 100,  few_shot_acc * 100, eval_acc_mic_top1 * 100))
-    # return np.round(many_shot_acc * 100, decimals=2), np.round(medium_shot_acc * 100, decimals=2), np.round(few_shot_acc * 100, decimals=2), np.round(eval_acc_mic_top1 * 100, decimals=2)
 
 
 if __name__ == '__main__':
