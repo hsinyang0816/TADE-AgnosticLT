@@ -133,7 +133,7 @@ class FoodLTDataLoader(DataLoader):
     ImageNetLT Data Loader
     """
 
-    def __init__(self, data_dir, batch_size, shuffle=True, num_workers=1, training=True, balanced=False, retain_epoch_size=True):
+    def __init__(self, data_dir, batch_size, num_workers=1, training=True):
         train_trsfm = transforms.Compose([
             transforms.RandomResizedCrop(224),
             transforms.RandomHorizontalFlip(),
@@ -144,9 +144,11 @@ class FoodLTDataLoader(DataLoader):
         ])
         test_trsfm = transforms.Compose([
             transforms.Resize(256),
-            transforms.CenterCrop(224),
-            transforms.ToTensor(),
-            transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+            transforms.TenCrop((224, 224)),
+            transforms.Lambda(lambda crops: torch.stack(
+                [transforms.ToTensor()(crop) for crop in crops])),
+            transforms.Lambda(lambda crops: torch.stack(
+                [transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])(crop) for crop in crops])),
         ])
 
         if training:
@@ -170,7 +172,7 @@ class FoodLTDataLoader(DataLoader):
 
         self.n_samples = len(self.dataset)
         self.val = datasets.DatasetFolder(
-            os.path.join('../final-project-challenge-3-tami/food_data/val'), loader=lambda x: Image.open(x), extensions="jpg", transform=test_trsfm)
+            os.path.join(os.path.join(data_dir, 'val')), loader=lambda x: Image.open(x), extensions="jpg", transform=test_trsfm)
         self.mapping = self.val.class_to_idx
         print(
             "Test set will not be evaluated with balanced sampler, nothing is done to make it balanced")
@@ -244,7 +246,7 @@ def main(config):
     weight_record_list = []
     data_loader = FoodLTDataLoader(
         '../final-project-challenge-3-tami/food_data',
-        batch_size=128,
+        batch_size=32,
         shuffle=False,
         training=False,
         num_workers=0,
@@ -277,13 +279,15 @@ def test_validation(data_loader, model, aggregation_weight, device, mapping):
         for i, (data, _, id) in enumerate(tqdm(data_loader)):
             # print(data.shape)
             data = data.to(device)
-            output = model(data)
+            b, crop, c, h, w = data.shape
+            output = model(data.view(-1, c, h, w))
             expert1_logits_output = output['logits'][:, 0, :]
             expert2_logits_output = output['logits'][:, 1, :]
             expert3_logits_output = output['logits'][:, 2, :]
             aggregation_output = aggregation_weight[0] * expert1_logits_output + aggregation_weight[1] * \
                 expert2_logits_output + \
                 aggregation_weight[2] * expert3_logits_output
+            aggregation_output = aggregation_output.view(b, crop, -1).mean(1)
             prediction_results.extend(
                 aggregation_output.argmax(axis=1).cpu().numpy().tolist())
             IDs.extend(id)

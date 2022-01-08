@@ -5,13 +5,16 @@ from numpy import inf
 from logger import TensorboardWriter
 from utils import load_state_dict, rename_parallel_state_dict
 
+
 class BaseTrainer:
     """
     Base class for all trainers
     """
+
     def __init__(self, model, criterion, metric_ftns, optimizer, config):
         self.config = config
-        self.logger = config.get_logger('trainer', config['trainer']['verbosity'])
+        self.logger = config.get_logger(
+            'trainer', config['trainer']['verbosity'])
 
         # setup GPU device if available, move model into configured device
         self.device, device_ids = self._prepare_device(config['n_gpu'])
@@ -21,7 +24,8 @@ class BaseTrainer:
 
         self.real_model = self.model
         if len(self.device_ids) > 1:
-            self.model = torch.nn.DataParallel(self.model, device_ids=device_ids)
+            self.model = torch.nn.DataParallel(
+                self.model, device_ids=device_ids)
 
         self.criterion = criterion.to(self.device)
         self.metric_ftns = metric_ftns
@@ -47,16 +51,20 @@ class BaseTrainer:
 
         self.checkpoint_dir = config.save_dir
 
-        # setup visualization writer instance                
-        self.writer = TensorboardWriter(config.log_dir, self.logger, cfg_trainer['tensorboard'])
+        # setup visualization writer instance
+        self.writer = TensorboardWriter(
+            config.log_dir, self.logger, cfg_trainer['tensorboard'])
 
         if config.load_crt is not None:
             print("Loading from cRT pretrain: {}".format(config.load_crt))
             self._load_crt(config.load_crt)
 
         if config.resume is not None:
-            state_dict_only = config._config.get("resume_state_dict_only", False)
-            self._resume_checkpoint(config.resume, state_dict_only=state_dict_only)
+            state_dict_only = config._config.get(
+                "resume_state_dict_only", False)
+            state_dict_only = True
+            self._resume_checkpoint(
+                config.resume, state_dict_only=state_dict_only)
 
     @abstractmethod
     def _train_epoch(self, epoch):
@@ -89,7 +97,8 @@ class BaseTrainer:
                 try:
                     # check whether model performance improved or not, according to specified metric(mnt_metric)
                     improved = (self.mnt_mode == 'min' and log[self.mnt_metric] <= self.mnt_best) or \
-                               (self.mnt_mode == 'max' and log[self.mnt_metric] >= self.mnt_best)
+                               (self.mnt_mode ==
+                                'max' and log[self.mnt_metric] >= self.mnt_best)
                 except KeyError:
                     self.logger.warning("Warning: Metric '{}' is not found. "
                                         "Model performance monitoring is disabled.".format(self.mnt_metric))
@@ -149,7 +158,8 @@ class BaseTrainer:
             'criterion': self.criterion.state_dict()
         }
         if not best_only:
-            filename = str(self.checkpoint_dir / 'checkpoint-epoch{}.pth'.format(epoch))
+            filename = str(self.checkpoint_dir /
+                           'checkpoint-epoch{}.pth'.format(epoch))
             torch.save(state, filename)
             self.logger.info("Saving checkpoint: {} ...".format(filename))
         if save_best:
@@ -166,7 +176,7 @@ class BaseTrainer:
         ignore_linear = True
 
         rename_parallel_state_dict(state_dict)
-        
+
         if ignore_linear:
             for k in list(state_dict.keys()):
                 if k.startswith('backbone.linear'):
@@ -193,7 +203,7 @@ class BaseTrainer:
         if not state_dict_only:
             if 'epoch' in checkpoint:
                 self.start_epoch = checkpoint['epoch'] + 1
-            
+
             if 'monitor_best' in checkpoint:
                 self.mnt_best = checkpoint['monitor_best']
 
@@ -201,7 +211,7 @@ class BaseTrainer:
             if checkpoint['config']['arch'] != self.config['arch']:
                 self.logger.warning("Warning: Architecture configuration given in config file is different from that of "
                                     "checkpoint. This may yield an exception while state_dict is being loaded.")
-        
+
         state_dict = checkpoint['state_dict']
         if state_dict_only:
             rename_parallel_state_dict(state_dict)
@@ -214,7 +224,8 @@ class BaseTrainer:
                 load_state_dict(self.criterion, checkpoint['criterion'])
                 self.logger.info("Criterion state dict is loaded")
             else:
-                self.logger.info("Criterion state dict is not found, so it's not loaded.")
+                self.logger.info(
+                    "Criterion state dict is not found, so it's not loaded.")
 
             # load optimizer state from checkpoint only when optimizer type is not changed.
             if 'optimizer' in checkpoint:
@@ -224,4 +235,5 @@ class BaseTrainer:
                 else:
                     self.optimizer.load_state_dict(checkpoint['optimizer'])
 
-        self.logger.info("Checkpoint loaded. Resume training from epoch {}".format(self.start_epoch))
+        self.logger.info(
+            "Checkpoint loaded. Resume training from epoch {}".format(self.start_epoch))
