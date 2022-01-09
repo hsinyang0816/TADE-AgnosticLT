@@ -271,10 +271,10 @@ class RIDELoss(nn.Module):
 
 
 class DiverseExpertLoss(nn.Module):
-    def __init__(self, cls_num_list=None,  max_m=0.5, s=30, tau=2, epoch=-1):
+    def __init__(self, cls_num_list=None,  max_m=0.5, s=30, tau=2):
         super().__init__()
         self.base_loss = F.cross_entropy
-        self.epoch = epoch
+        # self.epoch = epoch
         self.max_epoch = 29
         prior = np.array(cls_num_list) / np.sum(cls_num_list)
         self.prior = torch.tensor(prior).float().cuda()
@@ -290,16 +290,16 @@ class DiverseExpertLoss(nn.Module):
 
         return inverse_prior
 
-    def forward(self, output_logits, target, extra_info=None):
+    def forward(self, output_logits, target, epoch=-1, extra_info=None):
         if extra_info is None:
             # output_logits indicates the final prediction
             return self.base_loss(output_logits, target)
 
         loss = 0
-        if(self.epoch <= 0):
+        if(epoch <= 0):
             print('error')
 
-        alpha = 1 - ((self.epoch - 1) / self.max_epoch) ** 2  # parabolic decay
+        alpha = 1 - ((epoch - 1) / self.max_epoch) ** 2  # parabolic decay
         # alpha = 0  # fixed
 
         # Obtain logits from each expert
