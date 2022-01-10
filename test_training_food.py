@@ -260,7 +260,7 @@ def main(config):
     image_wise = True
     if image_wise:
         aggregation_weight = torch.nn.Parameter(
-            torch.FloatTensor(len(train_data_loader), 3), requires_grad=True)
+            torch.FloatTensor(len(train_data_loader.dataset), 3), requires_grad=True)
     else:
         aggregation_weight = torch.nn.Parameter(
             torch.FloatTensor(3), requires_grad=True)
@@ -308,13 +308,17 @@ def test_training(train_data_loader, model,  aggregation_weight, optimizer, imag
         if image_wise:
             aggregation_softmax = torch.nn.functional.softmax(
                 aggregation_weight[i: i+data[0].shape[0]])  # softmax for normalization
+            aggregation_output0 = aggregation_softmax[:, 0].unsqueeze(1).expand((32, 1000)).cuda() * expert1_logits_output0 + aggregation_softmax[:, 1].unsqueeze(1).expand((32, 1000)).cuda(
+            ) * expert2_logits_output0 + aggregation_softmax[:, 2].unsqueeze(1).expand((32, 1000)).cuda() * expert3_logits_output0
+            aggregation_output1 = aggregation_softmax[:, 0].unsqueeze(1).expand((32, 1000)).cuda() * expert1_logits_output1 + aggregation_softmax[:, 1].unsqueeze(1).expand((32, 1000)).cuda(
+            ) * expert2_logits_output1 + aggregation_softmax[:, 2].unsqueeze(1).expand((32, 1000)).cuda() * expert3_logits_output1
         else:
             aggregation_softmax = torch.nn.functional.softmax(
                 aggregation_weight)  # softmax for normalization
-        aggregation_output0 = aggregation_softmax[0].cuda() * expert1_logits_output0 + aggregation_softmax[1].cuda(
-        ) * expert2_logits_output0 + aggregation_softmax[2].cuda() * expert3_logits_output0
-        aggregation_output1 = aggregation_softmax[0].cuda() * expert1_logits_output1 + aggregation_softmax[1].cuda(
-        ) * expert2_logits_output1 + aggregation_softmax[2].cuda() * expert3_logits_output1
+            aggregation_output0 = aggregation_softmax[0].cuda() * expert1_logits_output0 + aggregation_softmax[1].cuda(
+            ) * expert2_logits_output0 + aggregation_softmax[2].cuda() * expert3_logits_output0
+            aggregation_output1 = aggregation_softmax[0].cuda() * expert1_logits_output1 + aggregation_softmax[1].cuda(
+            ) * expert2_logits_output1 + aggregation_softmax[2].cuda() * expert3_logits_output1
         softmax_aggregation_output0 = F.softmax(aggregation_output0, dim=1)
         softmax_aggregation_output1 = F.softmax(aggregation_output1, dim=1)
 

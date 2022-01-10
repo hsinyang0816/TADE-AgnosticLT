@@ -256,7 +256,7 @@ def main(config):
     image_wise = True
     if image_wise:
         aggregation_weight = torch.nn.Parameter(
-            torch.FloatTensor(len(valid_data_loader), 3), requires_grad=False)
+            torch.FloatTensor(len(valid_data_loader.dataset), 3), requires_grad=False)
     else:
         aggregation_weight = torch.nn.Parameter(
             torch.FloatTensor(3), requires_grad=False)
@@ -296,12 +296,15 @@ def test_validation(data_loader, model, aggregation_weight, device, mapping, ima
             if image_wise:
                 aggregation_softmax = torch.nn.functional.softmax(
                     aggregation_weight[i: i + b])  # softmax for normalization
+                aggregation_output = aggregation_softmax[:, 0].unsqueeze(1).expand((32, 1000)).cuda() * expert1_logits_output + aggregation_softmax[:, 1].unsqueeze(
+                    1).expand((32, 1000)).cuda() * expert2_logits_output + aggregation_softmax[:, 2].unsqueeze(1).expand((32, 1000)).cuda() * expert3_logits_output
             else:
                 aggregation_softmax = torch.nn.functional.softmax(
                     aggregation_weight)  # softmax for normalization
-            aggregation_output = aggregation_softmax[0] * expert1_logits_output + aggregation_softmax[1] * \
-                expert2_logits_output + \
-                aggregation_softmax[2] * expert3_logits_output
+                aggregation_output = aggregation_softmax[0] * expert1_logits_output + aggregation_softmax[1] * \
+                    expert2_logits_output + \
+                    aggregation_softmax[2] * expert3_logits_output
+
             # aggregation_output = aggregation_output.view(b, crop, -1).mean(1)
             prediction_results.extend(
                 aggregation_output.argmax(axis=1).cpu().numpy().tolist())
