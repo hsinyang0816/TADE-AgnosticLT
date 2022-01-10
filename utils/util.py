@@ -42,7 +42,7 @@ def load_state_dict(model, state_dict, no_ignore=False):
     own_state = model.state_dict()
     count = 0
     for name, param in state_dict.items():
-	name = name.split('module.')[-1]
+		name = name.split('module.')[-1]
         if name not in own_state: # ignore
             print("Warning: {} ignored because it does not exist in state_dict".format(name))
             assert not no_ignore, "Ignoring param that does not exist in model's own state dict is not allowed."
