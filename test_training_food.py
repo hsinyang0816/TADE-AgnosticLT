@@ -334,10 +334,14 @@ def test_training(train_data_loader, model,  aggregation_weight, optimizer, imag
 
         losses.update(ssl_loss, data[0].shape[0])
 
-    aggregation_softmax = torch.nn.functional.softmax(
-        aggregation_weight, dim=0).detach().cpu().numpy()
-
-    return np.round(aggregation_softmax[0], decimals=2), np.round(aggregation_softmax[1], decimals=2), np.round(aggregation_softmax[2], decimals=2)
+    if image_wise:
+        aggregation_softmax = torch.nn.functional.softmax(
+            aggregation_weight, dim=1).detach().cpu().numpy()
+        return aggregation_softmax
+    else:
+        aggregation_softmax = torch.nn.functional.softmax(
+            aggregation_weight, dim=0).detach().cpu().numpy()
+        return np.round(aggregation_softmax[0], decimals=2), np.round(aggregation_softmax[1], decimals=2), np.round(aggregation_softmax[2], decimals=2)
 
 
 if __name__ == '__main__':
