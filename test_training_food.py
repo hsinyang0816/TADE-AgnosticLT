@@ -256,28 +256,35 @@ def main(config):
 
     train_data_loader = data_loader.train_set()
     # valid_data_loader = data_loader.test_set()
-    num_classes = config._config["arch"]["args"]["num_classes"]
-    aggregation_weight = torch.nn.Parameter(
-        torch.FloatTensor(3), requires_grad=True)
+    # num_classes = config._config["arch"]["args"]["num_classes"]
+    image_wise = True
+    if image_wise:
+        aggregation_weight = torch.nn.Parameter(
+            torch.FloatTensor(len(train_data_loader), 3), requires_grad=True)
+    else:
+        aggregation_weight = torch.nn.Parameter(
+            torch.FloatTensor(3), requires_grad=True)
     aggregation_weight.data.fill_(1/3)
 
     optimizer = config.init_obj('optimizer', torch.optim, [aggregation_weight])
 
     for k in range(config["epochs"]):
         weight_record = test_training(
-            train_data_loader, model, aggregation_weight, optimizer, num_classes, config, args)
-        if weight_record[0] < 0.05 or weight_record[1] < 0.05 or weight_record[2] < 0.05:
-            break
+            train_data_loader, model, aggregation_weight, optimizer, image_wise)
+        if image_wise == False:
+            if weight_record[0] < 0.05 or weight_record[1] < 0.05 or weight_record[2] < 0.05:
+                break
     torch.save({'weight': weight_record}, 'aggregation_weight.pth')
-    print("Aggregation weight: Expert 1 is {0:.2f}, Expert 2 is {1:.2f}, Expert 3 is {2:.2f}".format(
-        weight_record[0], weight_record[1], weight_record[2]))
-    weight_record_list.append(weight_record)
-    print('Aggregation weights of three experts:')
-    for txt in weight_record_list:
-        print(*txt)
+    if image_wise == False:
+        print("Aggregation weight: Expert 1 is {0:.2f}, Expert 2 is {1:.2f}, Expert 3 is {2:.2f}".format(
+            weight_record[0], weight_record[1], weight_record[2]))
+    # weight_record_list.append(weight_record)
+    # print('Aggregation weights of three experts:')
+    # for txt in weight_record_list:
+    #     print(*txt)
 
 
-def test_training(train_data_loader, model,  aggregation_weight, optimizer,   num_classes, config, args):
+def test_training(train_data_loader, model,  aggregation_weight, optimizer, image_wise):
     model.eval()
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     losses = AverageMeter('Loss', ':.4e')
@@ -287,7 +294,7 @@ def test_training(train_data_loader, model,  aggregation_weight, optimizer,   nu
 
     cos = torch.nn.CosineSimilarity(dim=1, eps=1e-6)
 
-    for i, (data, _, id) in enumerate(tqdm(train_data_loader)):
+    for i, (data, _, _) in enumerate(tqdm(train_data_loader)):
         data[0] = data[0].to(device)
         data[1] = data[1].to(device)
         output0 = model(data[0])
@@ -298,8 +305,12 @@ def test_training(train_data_loader, model,  aggregation_weight, optimizer,   nu
         expert1_logits_output1 = output1['logits'][:, 0, :]
         expert2_logits_output1 = output1['logits'][:, 1, :]
         expert3_logits_output1 = output1['logits'][:, 2, :]
-        aggregation_softmax = torch.nn.functional.softmax(
-            aggregation_weight)  # softmax for normalization
+        if image_wise:
+            aggregation_softmax = torch.nn.functional.softmax(
+                aggregation_weight[i: i+data[0].shape[0]])  # softmax for normalization
+        else:
+            aggregation_softmax = torch.nn.functional.softmax(
+                aggregation_weight)  # softmax for normalization
         aggregation_output0 = aggregation_softmax[0].cuda() * expert1_logits_output0 + aggregation_softmax[1].cuda(
         ) * expert2_logits_output0 + aggregation_softmax[2].cuda() * expert3_logits_output0
         aggregation_output1 = aggregation_softmax[0].cuda() * expert1_logits_output1 + aggregation_softmax[1].cuda(

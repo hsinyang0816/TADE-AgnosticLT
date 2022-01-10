@@ -253,20 +253,26 @@ def main(config):
     )
     valid_data_loader, mapping = data_loader.test_set()
     # num_classes = config._config["arch"]["args"]["num_classes"]
-    aggregation_weight = torch.nn.Parameter(
-        torch.FloatTensor(3), requires_grad=False)
+    image_wise = True
+    if image_wise:
+        aggregation_weight = torch.nn.Parameter(
+            torch.FloatTensor(len(valid_data_loader), 3), requires_grad=False)
+    else:
+        aggregation_weight = torch.nn.Parameter(
+            torch.FloatTensor(3), requires_grad=False)
     aggregation_weight.data.fill_(1/3)
     mapping = {v: k for k, v in mapping.items()}
     checkpoint = torch.load('aggregation_weight.pth')
     aggregation_weight = checkpoint['weight']
     # aggregation_weight = torch.FloatTensor([0.6, 0.25, 0.15])
-    print("Aggregation weight: Expert 1 is {0:.2f}, Expert 2 is {1:.2f}, Expert 3 is {2:.2f}".format(
-        aggregation_weight[0], aggregation_weight[1], aggregation_weight[2]))
+    if image_wise == False:
+        print("Aggregation weight: Expert 1 is {0:.2f}, Expert 2 is {1:.2f}, Expert 3 is {2:.2f}".format(
+            aggregation_weight[0], aggregation_weight[1], aggregation_weight[2]))
     test_validation(valid_data_loader, model,
-                    aggregation_weight, device, mapping)
+                    aggregation_weight, device, mapping, image_wise)
 
 
-def test_validation(data_loader, model, aggregation_weight, device, mapping):
+def test_validation(data_loader, model, aggregation_weight, device, mapping, image_wise):
     model.eval()
     # aggregation_weight.requires_grad = False
     IDs = []
@@ -281,13 +287,22 @@ def test_validation(data_loader, model, aggregation_weight, device, mapping):
             data = data.to(device)
             b, crop, c, h, w = data.shape
             output = model(data.view(-1, c, h, w))
-            expert1_logits_output = output['logits'][:, 0, :]
-            expert2_logits_output = output['logits'][:, 1, :]
-            expert3_logits_output = output['logits'][:, 2, :]
-            aggregation_output = aggregation_weight[0] * expert1_logits_output + aggregation_weight[1] * \
+            expert1_logits_output = output['logits'][:, 0, :].view(
+                b, crop, -1).mean(1)
+            expert2_logits_output = output['logits'][:, 1, :].view(
+                b, crop, -1).mean(1)
+            expert3_logits_output = output['logits'][:, 2, :].view(
+                b, crop, -1).mean(1)
+            if image_wise:
+                aggregation_softmax = torch.nn.functional.softmax(
+                    aggregation_weight[i: i + b])  # softmax for normalization
+            else:
+                aggregation_softmax = torch.nn.functional.softmax(
+                    aggregation_weight)  # softmax for normalization
+            aggregation_output = aggregation_softmax[0] * expert1_logits_output + aggregation_softmax[1] * \
                 expert2_logits_output + \
-                aggregation_weight[2] * expert3_logits_output
-            aggregation_output = aggregation_output.view(b, crop, -1).mean(1)
+                aggregation_softmax[2] * expert3_logits_output
+            # aggregation_output = aggregation_output.view(b, crop, -1).mean(1)
             prediction_results.extend(
                 aggregation_output.argmax(axis=1).cpu().numpy().tolist())
             IDs.extend(id)
