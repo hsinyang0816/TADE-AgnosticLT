@@ -297,6 +297,7 @@ def test_training(train_data_loader, model,  aggregation_weight, optimizer, imag
     for i, (data, _, _) in enumerate(tqdm(train_data_loader)):
         data[0] = data[0].to(device)
         data[1] = data[1].to(device)
+        b = data[0].shape[0]
         output0 = model(data[0])
         output1 = model(data[1])
         expert1_logits_output0 = output0['logits'][:, 0, :]
@@ -308,10 +309,10 @@ def test_training(train_data_loader, model,  aggregation_weight, optimizer, imag
         if image_wise:
             aggregation_softmax = torch.nn.functional.softmax(
                 aggregation_weight[i: i+data[0].shape[0]])  # softmax for normalization
-            aggregation_output0 = aggregation_softmax[:, 0].unsqueeze(1).expand((32, 1000)).cuda() * expert1_logits_output0 + aggregation_softmax[:, 1].unsqueeze(1).expand((32, 1000)).cuda(
-            ) * expert2_logits_output0 + aggregation_softmax[:, 2].unsqueeze(1).expand((32, 1000)).cuda() * expert3_logits_output0
-            aggregation_output1 = aggregation_softmax[:, 0].unsqueeze(1).expand((32, 1000)).cuda() * expert1_logits_output1 + aggregation_softmax[:, 1].unsqueeze(1).expand((32, 1000)).cuda(
-            ) * expert2_logits_output1 + aggregation_softmax[:, 2].unsqueeze(1).expand((32, 1000)).cuda() * expert3_logits_output1
+            aggregation_output0 = aggregation_softmax[:, 0].unsqueeze(1).expand((b, 1000)).cuda() * expert1_logits_output0 + aggregation_softmax[:, 1].unsqueeze(1).expand((b, 1000)).cuda(
+            ) * expert2_logits_output0 + aggregation_softmax[:, 2].unsqueeze(1).expand((b, 1000)).cuda() * expert3_logits_output0
+            aggregation_output1 = aggregation_softmax[:, 0].unsqueeze(1).expand((b, 1000)).cuda() * expert1_logits_output1 + aggregation_softmax[:, 1].unsqueeze(1).expand((b, 1000)).cuda(
+            ) * expert2_logits_output1 + aggregation_softmax[:, 2].unsqueeze(1).expand((b, 1000)).cuda() * expert3_logits_output1
         else:
             aggregation_softmax = torch.nn.functional.softmax(
                 aggregation_weight)  # softmax for normalization

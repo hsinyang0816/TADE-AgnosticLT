@@ -245,9 +245,9 @@ def main(config):
     model = model.to(device)
     weight_record_list = []
     data_loader = FoodLTDataLoader(
-        '../final-project-challenge-3-tami/food_data',
+        config['data_loader']['args']['data_dir'],
         batch_size=32,
-        shuffle=False,
+        # shuffle=False,
         training=False,
         num_workers=0,
     )
@@ -295,12 +295,12 @@ def test_validation(data_loader, model, aggregation_weight, device, mapping, ima
                 b, crop, -1).mean(1)
             if image_wise:
                 aggregation_softmax = torch.nn.functional.softmax(
-                    aggregation_weight[i: i + b])  # softmax for normalization
-                aggregation_output = aggregation_softmax[:, 0].unsqueeze(1).expand((32, 1000)).cuda() * expert1_logits_output + aggregation_softmax[:, 1].unsqueeze(
-                    1).expand((32, 1000)).cuda() * expert2_logits_output + aggregation_softmax[:, 2].unsqueeze(1).expand((32, 1000)).cuda() * expert3_logits_output
+                    torch.from_numpy(aggregation_weight))  # softmax for normalization
+                aggregation_output = aggregation_softmax[:, 0].unsqueeze(1).expand((b, 1000)).cuda() * expert1_logits_output + aggregation_softmax[:, 1].unsqueeze(
+                    1).expand((b, 1000)).cuda() * expert2_logits_output + aggregation_softmax[:, 2].unsqueeze(1).expand((b, 1000)).cuda() * expert3_logits_output
             else:
                 aggregation_softmax = torch.nn.functional.softmax(
-                    aggregation_weight)  # softmax for normalization
+                    torch.from_numpy(aggregation_weight))  # softmax for normalization
                 aggregation_output = aggregation_softmax[0] * expert1_logits_output + aggregation_softmax[1] * \
                     expert2_logits_output + \
                     aggregation_softmax[2] * expert3_logits_output
